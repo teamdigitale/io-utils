@@ -3,15 +3,14 @@
 import * as fs from "fs-extra";
 import { ITuple2, Tuple2 } from "italia-ts-commons/lib/tuples";
 import * as nunjucks from "nunjucks";
-import { OpenAPI, OpenAPIV2 } from "openapi-types";
+import { OpenAPI, OpenAPIV2, OpenAPIV3 } from "openapi-types";
 import * as prettier from "prettier";
 import * as SwaggerParser from "swagger-parser";
 
 const SUPPORTED_SPEC_METHODS = ["get", "post", "put", "delete"];
-
 function renderAsync(
   env: nunjucks.Environment,
-  definition: OpenAPIV2.DefinitionsObject,
+  definition: OpenAPIV2.DefinitionsObject | OpenAPIV3.ComponentsObject,
   definitionName: string,
   strictInterfaces: boolean
 ): Promise<string> {
@@ -36,7 +35,7 @@ function renderAsync(
 export async function renderDefinitionCode(
   env: nunjucks.Environment,
   definitionName: string,
-  definition: OpenAPIV2.DefinitionsObject,
+  definition: OpenAPIV2.DefinitionsObject | OpenAPIV3.ComponentsObject,
   strictInterfaces: boolean
 ): Promise<string> {
   const code = await renderAsync(
@@ -100,9 +99,13 @@ function getDecoderForResponse(status: string, type: string): string {
 export function renderOperation(
   method: string,
   operationId: string,
-  operation: OpenAPIV2.OperationObject,
-  specParameters: OpenAPIV2.ParametersDefinitionsObject | undefined,
-  securityDefinitions: OpenAPIV2.SecurityDefinitionsObject | undefined,
+  operation: OpenAPI.Operation,
+  specParameters:
+    | OpenAPIV2.ParametersDefinitionsObject
+    | OpenAPIV3.ParameterObject,
+  securityDefinitions:
+    | OpenAPIV2.SecurityDefinitionsObject
+    | OpenAPIV3.SecurityRequirementObject,
   extraHeaders: ReadonlyArray<string>,
   extraParameters: { [key: string]: string },
   defaultSuccessType: string,
@@ -113,26 +116,25 @@ export function renderOperation(
   const params: { [key: string]: string } = {};
   const importedTypes = new Set<string>();
   if (operation.parameters !== undefined) {
-    const parameters = operation.parameters.map(
-      p => p as OpenAPIV2.ParameterObject
-    );
+    const parameters = operation.parameters as Array<
+      OpenAPIV2.InBodyParameterObject | OpenAPIV3.ParameterObject
+    >;
     parameters.forEach(param => {
-      if (param.name && param.type) {
+      if (param.name && (param as any).type) {
         // The parameter description is inline
         const isRequired = param.required === true;
         params[`${param.name}${isRequired ? "" : "?"}`] = specTypeToTs(
-          param.type
+          (param as any).type
         );
         return;
       }
       // Paratemer is declared as ref, we need to look it up
       const refInParam: string | undefined =
-        param.$ref || (param.schema ? param.schema.$ref : undefined);
+        (param as any).$ref ||
+        ((param as any).schema ? (param as any).schema.$ref : undefined);
       if (refInParam === undefined) {
         console.warn(
-          `Skipping param without ref in operation [${operationId}] [${
-            param.name
-          }]`
+          `Skipping param without ref in operation [${operationId}] [${param.name}]`
         );
         return;
       }
@@ -146,12 +148,11 @@ export function renderOperation(
         console.warn(`Unrecognized ref type [${refInParam}]`);
         return;
       }
-
       const paramType: string | undefined =
         refType === "definition"
           ? parsedRef.e2
           : specParameters
-          ? specTypeToTs(specParameters[parsedRef.e2].type)
+          ? specTypeToTs((specParameters as any)[parsedRef.e2].type)
           : undefined;
 
       if (paramType === undefined) {
@@ -163,7 +164,7 @@ export function renderOperation(
         refType === "definition"
           ? param.required === true
           : specParameters
-          ? specParameters[parsedRef.e2].required
+          ? (specParameters as any)[parsedRef.e2].required
           : false;
 
       const paramName = `${uncapitalize(parsedRef.e2)}${
@@ -181,7 +182,13 @@ export function renderOperation(
     ? getAuthHeaders(
         securityDefinitions,
         operation.security
-          .map((_: OpenAPIV2.SecurityRequirementObject) => Object.keys(_)[0])
+          .map(
+            (
+              _:
+                | OpenAPIV2.SecurityDefinitionsObject
+                | OpenAPIV3.SecurityRequirementObject
+            ) => Object.keys(_)[0]
+          )
           .filter(_ => _ !== undefined)
       )
     : [];
@@ -207,20 +214,22 @@ export function renderOperation(
   const headersCode =
     headers.length > 0 ? headers.map(_ => `"${_}"`).join("|") : "never";
 
-  const responses = Object.keys(operation.responses).map(responseStatus => {
-    const response = operation.responses[responseStatus];
-    const typeRef = response.schema ? response.schema.$ref : undefined;
-    const parsedRef = typeRef ? typeFromRef(typeRef) : undefined;
-    if (parsedRef !== undefined) {
-      importedTypes.add(parsedRef.e2);
+  const responses = Object.keys(operation.responses as object).map(
+    responseStatus => {
+      const response = operation.responses![responseStatus];
+      const typeRef = response.schema ? response.schema.$ref : undefined;
+      const parsedRef = typeRef ? typeFromRef(typeRef) : undefined;
+      if (parsedRef !== undefined) {
+        importedTypes.add(parsedRef.e2);
+      }
+      const responseType = parsedRef
+        ? parsedRef.e2
+        : responseStatus === "200"
+        ? defaultSuccessType
+        : defaultErrorType;
+      return Tuple2(responseStatus, responseType);
     }
-    const responseType = parsedRef
-      ? parsedRef.e2
-      : responseStatus === "200"
-      ? defaultSuccessType
-      : defaultErrorType;
-    return Tuple2(responseStatus, responseType);
-  });
+  );
 
   const responsesType = responses
     .map(r => `r.IResponseType<${r.e1}, ${r.e2}>`)
@@ -265,7 +274,9 @@ export function renderOperation(
 }
 
 function getAuthHeaders(
-  securityDefinitions: OpenAPIV2.Document["securityDefinitions"],
+  securityDefinitions:
+    | OpenAPIV2.SecurityDefinitionsObject
+    | OpenAPIV3.SecurityRequirementObject,
   securityKeys: ReadonlyArray<string>
 ): ReadonlyArray<ITuple2<string, string>> {
   if (securityKeys === undefined && securityDefinitions === undefined) {
@@ -282,11 +293,48 @@ function getAuthHeaders(
           Tuple2(k, securityDefinitions[k])
         )
       : [];
-
   return securityDefs
     .filter(_ => _.e2 !== undefined)
-    .filter(_ => (_.e2 as OpenAPIV2.SecuritySchemeApiKey).in === "header")
-    .map(_ => Tuple2(_.e1, (_.e2 as OpenAPIV2.SecuritySchemeApiKey).name));
+    .filter(
+      _ =>
+        (_.e2 as
+          | OpenAPIV2.SecuritySchemeApiKey
+          | OpenAPIV3.ApiKeySecurityScheme).in === "header"
+    )
+    .map(_ =>
+      Tuple2(
+        _.e1,
+        (_.e2 as
+          | OpenAPIV2.SecuritySchemeApiKey
+          | OpenAPIV3.ApiKeySecurityScheme).name
+      )
+    );
+}
+
+export function detectVersion(api: any) {
+  return api.hasOwnProperty("swagger")
+    ? {
+        definitions: api.definitions,
+        parameters: api.parameters,
+        schemasPath: "#/definitions/",
+        securityPath: api.securityDefinitions,
+        version: api.swagger
+      }
+    : api.hasOwnProperty("openapi")
+    ? {
+        definitions: api.components.schemas,
+        parameters: api.components.parameters,
+        schemasPath: "#/components/schemas/",
+        securityPath: api.components.securitySchemes,
+        version: api.openapi
+      }
+    : {
+        definitions: undefined,
+        parameters: undefined,
+        schemasPath: "",
+        securityPath: undefined,
+        version: ""
+      };
 }
 
 export function isOpenAPIV2(
@@ -295,9 +343,15 @@ export function isOpenAPIV2(
   return specs.hasOwnProperty("swagger");
 }
 
+export function isOpenAPIV3(
+  specs: OpenAPI.Document
+): specs is OpenAPIV3.Document {
+  return specs.hasOwnProperty("openapi");
+}
+
 export async function generateApi(
   env: nunjucks.Environment,
-  specFilePath: string | OpenAPIV2.Document,
+  specFilePath: string,
   definitionsDirPath: string,
   tsSpecFilePath: string | undefined,
   strictInterfaces: boolean,
@@ -306,10 +360,16 @@ export async function generateApi(
   defaultErrorType: string,
   generateResponseDecoders: boolean
 ): Promise<void> {
-  const api = await SwaggerParser.bundle(specFilePath);
+  const api: OpenAPI.Document = await SwaggerParser.bundle(specFilePath);
 
-  if (!isOpenAPIV2(api)) {
-    throw new Error("The specification is not of type swagger 2");
+  const detectedSpecVersion = detectVersion(api);
+
+  if (isOpenAPIV2(api)) {
+    console.info("The type of spec. is Swagger");
+  } else if (isOpenAPIV3(api)) {
+    console.info("The type of spec. is OpenAPI");
+  } else {
+    throw new Error("The specification is not correct.");
   }
   const specCode = `
     /* tslint:disable:object-literal-sort-keys */
@@ -329,8 +389,15 @@ export async function generateApi(
       })
     );
   }
+  const {
+    version,
+    parameters,
+    schemasPath,
+    definitions,
+    securityPath
+  } = detectedSpecVersion;
+  env.addGlobal("schemas_path", schemasPath);
 
-  const definitions = api.definitions;
   if (!definitions) {
     console.log("No definitions found, skipping generation of model code.");
     return;
@@ -354,10 +421,8 @@ export async function generateApi(
   if (generateRequestTypes || generateResponseDecoders) {
     // map global auth headers only if global security is defined
     const globalAuthHeaders = api.security
-      ? getAuthHeaders(api.securityDefinitions, api.security
-          .map((_: {}) =>
-            Object.keys(_).length > 0 ? Object.keys(_)[0] : undefined
-          )
+      ? getAuthHeaders(securityPath, api.security
+          .map(_ => (Object.keys(_).length > 0 ? Object.keys(_)[0] : undefined))
           .filter(_ => _ !== undefined) as ReadonlyArray<string>)
       : [];
 
@@ -366,11 +431,7 @@ export async function generateApi(
       const extraParameters: { [key: string]: string } = {};
       if (pathSpec.parameters !== undefined) {
         pathSpec.parameters.forEach(
-          (param: {
-            name: string;
-            required: boolean;
-            type: string | undefined;
-          }) => {
+          (param: { name: string; required: boolean; type?: string }) => {
             const paramType = param.type;
             if (paramType) {
               const paramName = `${param.name}${
@@ -417,8 +478,8 @@ export async function generateApi(
           method,
           operationId,
           operation,
-          api.parameters,
-          api.securityDefinitions,
+          parameters,
+          securityPath,
           globalAuthHeaders.map(_ => _.e2),
           extraParameters,
           defaultSuccessType,
@@ -427,7 +488,6 @@ export async function generateApi(
         );
       });
     });
-
     const operationsImports = new Set<string>();
     const operationTypesCode = operationsTypes
       .map(ops =>
@@ -436,7 +496,7 @@ export async function generateApi(
             if (op === undefined) {
               return;
             }
-            op.e2.forEach((i: string) => operationsImports.add(i));
+            op.e2.forEach(i => operationsImports.add(i));
             return op.e1;
           })
           .join("\n")
