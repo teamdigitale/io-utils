@@ -444,9 +444,9 @@
     deep-equal "^1.0.1"
 
 "@pagopa/openapi-codegen-ts@../":
-  version "7.0.2"
+  version "9.2.0"
   dependencies:
-    "@pagopa/ts-commons" "^9.1.0"
+    "@pagopa/ts-commons" "^9.2.0"
     fs-extra "^6.0.0"
     nunjucks "^3.2.2"
     prettier "^1.12.1"
@@ -459,6 +459,20 @@
   version "9.1.0"
   resolved "https://registry.yarnpkg.com/@pagopa/ts-commons/-/ts-commons-9.1.0.tgz#bbb5f41ffa7039e355123cc40411529b55cc1e34"
   integrity sha512-wRXk/qm1ReYsg9QHC0cYZraZpJw6AB2RYlU1WrcDFXUnbxEqQ2immP1knyaMkbqhm/uD4EXzX6/vKNztUHN+lg==
+  dependencies:
+    abort-controller "^3.0.0"
+    agentkeepalive "^4.1.2"
+    applicationinsights "^1.7.4"
+    fp-ts "1.17.4"
+    io-ts "1.8.5"
+    json-set-map "^1.0.2"
+    node-fetch "^2.6.0"
+    validator "^10.1.0"
+
+"@pagopa/ts-commons@^9.2.0":
+  version "9.5.0"
+  resolved "https://registry.yarnpkg.com/@pagopa/ts-commons/-/ts-commons-9.5.0.tgz#a86cc57e3ba1107d7cced3bf659fbabcf33983ff"
+  integrity sha512-zqW1qTqRYVlfDXncoEdywL6Wh61aBncflPhm8o1JLhMPIc+pHJru+iTaDEmVwDrDhcHmG4yf7CPpq3VF4i9fuA==
   dependencies:
     abort-controller "^3.0.0"
     agentkeepalive "^4.1.2"
@@ -3779,9 +3793,9 @@ posix-character-classes@^0.1.0:
   integrity sha1-AerA/jta9xoqbAL+q7jB/vfgDqs=
 
 postcss@^7.0.5:
-  version "7.0.27"
-  resolved "https://registry.yarnpkg.com/postcss/-/postcss-7.0.27.tgz#cc67cdc6b0daa375105b7c424a85567345fc54d9"
-  integrity sha512-WuQETPMcW9Uf1/22HWUWP9lgsIC+KEHg2kozMflKjbeUtw9ujvFX6QmIfozaErDkmLWS9WEnEdEe6Uo9/BNTdQ==
+  version "7.0.36"
+  resolved "https://registry.yarnpkg.com/postcss/-/postcss-7.0.36.tgz#056f8cffa939662a8f5905950c07d5285644dfcb"
+  integrity sha512-BebJSIUMwJHRH0HAQoxN4u1CN86glsrwsW0q7T+/m44eXOUAxSNdHRkNZPYz5vVUbg17hFgOQDE7fZk7li3pZw==
   dependencies:
     chalk "^2.4.2"
     source-map "^0.6.1"
