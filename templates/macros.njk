@@ -559,3 +559,32 @@
  # example: { name: 'token', headerName: 'Authorization' } -> ({ token }) => ({ "Authorization": token })
  #}
 {% macro requestParamsType(operation) -%}ReplaceRequestParams<{{ requestTypeName(operation) }},RequestParams<{{ requestTypeName(operation) }}>>{% endmacro %}
+
+
+
+
+{#  #}
+{% macro resultSuccessTypes(operation) -%}
+  {% set addPipe = 0 %}
+  {% for statusCode in [200, 201, 202] %}
+      {% set successResult = (operation.responses | parameterEqual("e1", statusCode) ) %}
+      {% if successResult !== undefined %}
+        {{ " | " if  (addPipe > 0)  else "" }} 
+        /* {{ statusCode }} */
+        {{ successResult | openapiResponseToTSCommonsResponse | safe }}
+        {% set addPipe = addPipe+1 %}
+      {% endif %}
+  {% endfor %}
+{% endmacro %}
+
+{#  #}
+{% macro resultFailureTypes(operation) -%}
+{% for response in operation.responses %}
+{{ " | " if loop.index0 else "" }}
+  {% set statusCode= response.e1 %}
+  {% if  [200, 201, 200].indexOf(statusCode) <= -1 %}
+      /* {{ statusCode }} */
+      {{ response | openapiResponseToTSCommonsResponse | safe }}
+  {% endif %}
+{% endfor %}
+{% endmacro %}

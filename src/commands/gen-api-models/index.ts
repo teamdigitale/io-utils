@@ -7,6 +7,7 @@ import {
   renderAllOperations,
   renderClientCode,
   renderDefinitionCode,
+  renderServerCode,
   renderSpecCode
 } from "./render";
 import { IGenerateApiOptions } from "./types";
@@ -54,6 +55,7 @@ export async function generateApi(options: IGenerateApiOptions): Promise<void> {
     specFilePath,
     tsSpecFilePath,
     generateClient = false,
+    generateServer = false,
     definitionsDirPath,
     strictInterfaces = false,
     defaultSuccessType = "undefined",
@@ -62,8 +64,8 @@ export async function generateApi(options: IGenerateApiOptions): Promise<void> {
   } = options;
 
   const {
-    generateRequestTypes = generateClient,
-    generateResponseDecoders = generateClient
+    generateRequestTypes = generateClient || generateServer,
+    generateResponseDecoders = generateClient || generateServer
   } = options;
 
   const api = await SwaggerParser.bundle(specFilePath);
@@ -106,7 +108,8 @@ export async function generateApi(options: IGenerateApiOptions): Promise<void> {
     )
   );
 
-  const needToParseOperations = generateClient || generateRequestTypes;
+  const needToParseOperations =
+    generateClient || generateServer || generateRequestTypes;
 
   if (needToParseOperations) {
     const specMeta = parseSpecMeta(api);
@@ -129,6 +132,15 @@ export async function generateApi(options: IGenerateApiOptions): Promise<void> {
       await writeGeneratedCodeFile(
         "client",
         `${definitionsDirPath}/client.ts`,
+        code
+      );
+    }
+
+    if (generateServer) {
+      const code = await renderServerCode(specMeta, allOperationInfos);
+      await writeGeneratedCodeFile(
+        "server",
+        `${definitionsDirPath}/server.ts`,
         code
       );
     }

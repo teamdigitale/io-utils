@@ -2,7 +2,9 @@
  * Exposes a template environment instantiated with custom template functionalities defined specifically for gen-api-models command
  */
 
+// import { HttpStatusCodeEnum } from "@pagopa/ts-commons/lib/responses";
 import { createTemplateEnvironment } from "../../lib/templating";
+import { IResponse } from "./types";
 
 /**
  * Factory method to create a set of filters bound to a common storage.
@@ -74,6 +76,21 @@ const paramIn = (
 ) => (item ? item.filter((e: { readonly in: string }) => e.in === where) : []);
 
 /**
+ * Given an array of parameter in the form { in: "value" }, filter the items based on the provided value
+ * for taking all except the passed one
+ *
+ * @param item
+ * @param where
+ *
+ * @return filtered items
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+const paramNotIn = (
+  item: ReadonlyArray<{ readonly in: string }> | undefined,
+  where: string
+) => (item ? item.filter((e: { readonly in: string }) => e.in !== where) : []);
+
+/**
  * Removes decorator character from a variable name
  * example: "arg?" -> "arg"
  * example: "arg" -> "arg"
@@ -95,6 +112,65 @@ const stripQuestionMark = (subject: ReadonlyArray<string> | string) => {
     : subject.map(strip_base);
 };
 
+/**
+ * Print optional symbol `?` from a variable name
+ * example: "arg?" -> "?"
+ * example: "arg" -> ""
+ * example: ["arg1?", "arg2"] -> ["?", ""]
+ *
+ * @param subject
+ *
+ * @returns
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+const setOptionalSymbol = (subject: ReadonlyArray<string> | string) => {
+  // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/explicit-function-return-type
+  const getOptionalSymbol = (str: string) =>
+    str[str.length - 1] === "?" ? "?" : "";
+  return !subject
+    ? undefined
+    : typeof subject === "string"
+    ? getOptionalSymbol(subject)
+    : subject.map(getOptionalSymbol);
+};
+
+/**
+ * Filter an array based on a paramenter and a value to match
+ */
+const parameterEqual = <T extends ReadonlyArray<any>>(
+  array: T,
+  parameterName: string,
+  value: any
+): any | undefined => array.find(a => a[parameterName] == value);
+
+/**
+ * Build the IResponse type based on OpenApi response values
+ * @param response
+ * @returns
+ */
+const openapiResponseToTSCommonsResponse = (response: IResponse): string => {
+  const returnType = response.e2 ?? "undefined";
+  // const statusCode: HttpStatusCodeEnum = +response.e1 as HttpStatusCodeEnum;
+  const statusCode = +response.e1;
+
+  // console.log(` ---->  ${statusCode}`);
+
+  switch (statusCode) {
+    case 200:
+      return `IResponseSuccessJson<${returnType}>`;
+    case 201:
+      return `IResponseSuccessRedirectToResource<${returnType}, ${returnType}>`;
+    case 202:
+      return `ResponseSuccessAccepted<${returnType}>`;
+    default:
+      return "NotImplemented";
+      throw Error(`Status code ${response.e1} not implemented`);
+  }
+};
+
+/**
+ *
+ */
 export default createTemplateEnvironment({
   customFilters: {
     resetImports,
@@ -108,6 +184,13 @@ export default createTemplateEnvironment({
     toFnArgs,
     // eslint-disable-next-line sort-keys
     paramIn,
-    stripQuestionMark
+    stripQuestionMark,
+
+    // eslint-disable-next-line sort-keys
+    paramNotIn,
+    parameterEqual,
+    setOptionalSymbol,
+    // eslint-disable-next-line sort-keys
+    openapiResponseToTSCommonsResponse
   }
 });

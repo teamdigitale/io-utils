@@ -84,6 +84,26 @@ export async function renderClientCode(
 }
 
 /**
+ * Given a list of parsed operations, it renders the code for an opinionated http server module that imlements each operation as an async method
+ *
+ * @param specMeta meta info of the api specification
+ * @param operations the list of parsed operations
+ *
+ * @returns the code of a http client
+ */
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type, prefer-arrow/prefer-arrow-functions
+export async function renderServerCode(
+  specMeta: ISpecMetaInfo,
+  operations: ReadonlyArray<IOperationInfo | undefined>
+) {
+  return render("server.ts.njk", {
+    operations,
+    spec: specMeta
+    // eslint-disable-next-line @typescript-eslint/no-use-before-define
+  }).then(formatCode);
+}
+
+/**
  * Renders the code that includes every operation definition
  *
  * @param allOperationInfos collection of parsed operations
